@@ -1,0 +1,30 @@
+name: Check and Deploy Proxy
+# current ci check as of 3/31:
+# - regular ci checks (lint, test, builld)
+# - TO DO: implement Docker build - push to registry - deply cloud run
+on:
+    push:
+        branches:
+            [main]
+jobs:
+    ci-checks:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v3
+
+            - name: Set up Go
+              uses: actions/setup-go@v5
+              with:
+                  go-version: '1.21'
+
+            - name: Download dependencies
+              run: go mod download
+
+            - name: Lint
+              run: go vet ./...
+
+            - name: Build
+              run: go build ./...
+
+            - name: Test
+              run: go test ./...
