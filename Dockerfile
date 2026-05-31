@@ -1,14 +1,19 @@
-FROM python:3.11-slim
-
-# Install ffmpeg
-RUN apt-get update && apt-get install -y ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
+FROM golang:1.22 AS builder
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY go.mod go.sum ./
+RUN go mod download
 
 COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -o cache-proxy .
 
-CMD ["python", "worker.py"]
+FROM gcr.io/distroless/static-debian12
+
+WORKDIR /app
+COPY --from=builder /app/cache-proxy /app/cache-proxy
+
+ENV PORT=8080
+EXPOSE 8080
+
+CMD ["/app/cache-proxy"]

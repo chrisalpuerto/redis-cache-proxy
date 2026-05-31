@@ -9,15 +9,17 @@ import (
 )
 
 func (p *Proxy) GetMetadataHandler(w http.ResponseWriter, r *http.Request) {
+
 	// get the videoId from the URL path
 	videoID := r.URL.Path[len("/metadata/"):]
 	if videoID == "" {
 		http.Error(w, `{"ok": false}`, http.StatusBadRequest)
 		return
 	}
-	// define unique cache key for videoId
+
+	//define unique cache key for videoId
 	cacheKey := fmt.Sprintf("metadata:v1:%s", videoID)
-	// attempt to get video metadata from redis cache
+	//attempt to get video metadata from redis cache
 	val, err := p.redis.Get(ctx, cacheKey).Result()
 
 	w.Header().Set("Content-Type", "application/json")
