@@ -26,8 +26,8 @@ func main() {
 
 	proxy := &Proxy{redis: client}
 
-	//GET /metadata/{videoId}
-	http.HandleFunc("/metadata/", proxy.GetMetadataHandler)
+	// /metadata/{videoId}
+	http.HandleFunc("/metadata/", proxy.MetadataHandler)
 	// Cloud Run injects PORT; default to 8080 for local dev
 	port := os.Getenv("PORT")
 	if port == "" {
