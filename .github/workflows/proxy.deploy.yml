@@ -43,6 +43,7 @@ jobs:
   deploy:
     needs: ci-checks
     runs-on: ubuntu-latest
+    environment: variables
     steps:
       - uses: actions/checkout@v4
 
