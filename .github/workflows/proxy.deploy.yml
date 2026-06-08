@@ -1,32 +1,103 @@
 name: Check and Deploy Proxy
-# current ci check as of 3/31:
-# - regular ci checks (lint, test, builld)
-# - TO DO: implement Docker build - push to registry - deply cloud run
+
 on:
-    push:
-        branches:
-            [main]
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
 env:
-    REDIS_URL: REDIS_URL
-    UPSTASH_REDIS_URL: UPSTASH_REDIS_URL
-    UPSTASH_REDIS_REST_TOKEN: UPSTASH_REDIS_REST_TOKEN
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  GCP_REGION: ${{ vars.GCP_REGION }}
+  ARTIFACT_REGISTRY_REPO: ${{ vars.ARTIFACT_REGISTRY_REPO }}
+  IMAGE_NAME: ${{ vars.IMAGE_NAME }}
+  CLOUD_RUN_SERVICE: ${{ vars.CLOUD_RUN_SERVICE }}
+  CLOUD_RUN_URL: ${{ vars.CLOUD_RUN_URL }}
 
 jobs:
-    ci-checks:
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v3
-            - name: Set up Go
-              uses: actions/setup-go@v5
-              with:
-                  go-version: '1.21'
-            - name: Download dependencies
-              run: go mod download
-            - name: Lint
-              run: go vet ./...
-            - name: Build
-              run: go build ./...
-            - name: Test
-              run: go test ./...
-          
-          
+  ci-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.21"
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Lint
+        run: go vet ./...
+
+      - name: Build
+        run: go build ./...
+
+      - name: Test
+        run: go test ./...
+
+  deploy:
+    needs: ci-checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+
+      - name: Build container image
+        run: |
+          docker build \
+            -t "${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REGISTRY_REPO}/${IMAGE_NAME}:${GITHUB_SHA}" \
+            .
+
+      - name: Push container image
+        run: |
+          docker push \
+            "${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REGISTRY_REPO}/${IMAGE_NAME}:${GITHUB_SHA}"
+
+      - name: Deploy to Cloud Run
+        env:
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+        run: |
+          gcloud run deploy "${CLOUD_RUN_SERVICE}" \
+            --image "${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REGISTRY_REPO}/${IMAGE_NAME}:${GITHUB_SHA}" \
+            --region "${GCP_REGION}" \
+            --platform managed \
+            --allow-unauthenticated \
+            --update-env-vars "REDIS_URL=${REDIS_URL}" \
+            --quiet
+      - name: Prune old Artifact Registry images
+        run: |
+          set -euo pipefail
+
+          IMAGE_PATH="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REGISTRY_REPO}/${IMAGE_NAME}"
+          readarray -t image_versions < <(
+            gcloud artifacts docker images list "${IMAGE_PATH}" \
+              --format="value(VERSION)" \
+              --sort-by="~UPDATE_TIME"
+          )
+
+          if [ "${#image_versions[@]}" -le 5 ]; then
+            echo "Found ${#image_versions[@]} image versions. Nothing to delete."
+            exit 0
+          fi
+
+          for old_version in "${image_versions[@]:5}"; do
+            echo "Deleting old image version: ${old_version}"
+            gcloud artifacts docker images delete "${old_version}" --quiet --delete-tags
+          done
