@@ -19,21 +19,6 @@ Returns cached metadata for the given `videoId`.
 - `405 Method Not Allowed` for unsupported methods with `Allow: GET, PUT`
 - `500 Internal Server Error` if Redis returns an unexpected error
 
-Example request:
-
-```bash
-curl -i http://localhost:8080/metadata/abc123
-```
-
-Example cache-hit response:
-
-```http
-HTTP/1.1 200 OK
-Content-Type: application/json
-X-Cache: HIT
-
-{"title":"Example video"}
-```
 
 #### `PUT /metadata/{videoId}`
 
@@ -44,20 +29,3 @@ Stores the request body as cached metadata for the given `videoId`.
 - `400 Bad Request` if `videoId` is missing, the body is empty, or the body is not valid JSON
 - `405 Method Not Allowed` for unsupported methods with `Allow: GET, PUT`
 - `500 Internal Server Error` if Redis returns an unexpected error
-
-Example request:
-
-```bash
-curl -i -X PUT http://localhost:8080/metadata/abc123 \
-  -H "Content-Type: application/json" \
-  -d '{"title":"Example video"}'
-```
-
-Example response:
-
-```http
-HTTP/1.1 200 OK
-Content-Type: application/json
-
-{"ok":true,"videoId":"abc123","cacheKey":"metadata:v1:abc123","ttl":86400}
-```
