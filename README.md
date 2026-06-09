@@ -6,13 +6,58 @@ Redis cache proxy for hooptuber.com, built in Go
 
 ### Endpoints
 
-- `GET /metadata/{videoId}` returns cached metadata if present
-- `PUT /metadata/{videoId}` stores JSON metadata in Redis for 24 hours
+`/metadata/{videoId}` uses Redis keys in the format `metadata:v1:{videoId}` with a TTL of 24 hours.
 
-Example:
+#### `GET /metadata/{videoId}`
+
+Returns cached metadata for the given `videoId`.
+
+- Request body: none
+- `200 OK` on cache hit with `Content-Type: application/json` and `X-Cache: HIT`
+- `200 OK` on cache miss with `Content-Type: application/json`, `X-Cache: MISS`, and `{"ok": false}`
+- `400 Bad Request` if `videoId` is missing
+- `405 Method Not Allowed` for unsupported methods with `Allow: GET, PUT`
+- `500 Internal Server Error` if Redis returns an unexpected error
+
+Example request:
 
 ```bash
-curl -X PUT http://localhost:8080/metadata/abc123 \
+curl -i http://localhost:8080/metadata/abc123
+```
+
+Example cache-hit response:
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+X-Cache: HIT
+
+{"title":"Example video"}
+```
+
+#### `PUT /metadata/{videoId}`
+
+Stores the request body as cached metadata for the given `videoId`.
+
+- Request body: non-empty valid JSON
+- `200 OK` with `{"ok": true, "videoId": "...", "cacheKey": "...", "ttl": 86400}` on success
+- `400 Bad Request` if `videoId` is missing, the body is empty, or the body is not valid JSON
+- `405 Method Not Allowed` for unsupported methods with `Allow: GET, PUT`
+- `500 Internal Server Error` if Redis returns an unexpected error
+
+Example request:
+
+```bash
+curl -i -X PUT http://localhost:8080/metadata/abc123 \
   -H "Content-Type: application/json" \
-  -d '{"title":"Test video","duration":120}'
+  -d '{"title":"Example video"}'
+```
+
+Example response:
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{"ok":true,"videoId":"abc123","cacheKey":"metadata:v1:abc123","ttl":86400}
 ```
